@@ -21,7 +21,7 @@ class Blaude:
         self.notifier = Notifier()
     
     def spawn(self, name: str, prompt: str, model="haiku", budget=2.0, 
-              notify="main", background=True) -> bool:
+              notify="dev-general", background=True) -> bool:
         """Spawn a new Claude worker"""
         return self.runner.run(name, prompt, model, budget, notify, background)
     
@@ -101,7 +101,7 @@ Examples:
     spawn_parser.add_argument("prompt", help="Prompt for Claude")
     spawn_parser.add_argument("--model", default="haiku", help="Claude model (default: haiku)")
     spawn_parser.add_argument("--budget", type=float, default=2.0, help="Budget in USD (default: 2.0)")
-    spawn_parser.add_argument("--notify", default="main", help="Agent to notify (default: main)")
+    spawn_parser.add_argument("--notify", default="dev-general", help="Agent to notify (default: dev-general)")
     spawn_parser.add_argument("--foreground", action="store_true", help="Run in foreground (for testing)")
     
     # Kill command
@@ -119,7 +119,7 @@ Examples:
     
     # Test notification command
     test_parser = subparsers.add_parser("test-notify", help="Send test notification")
-    test_parser.add_argument("target", nargs="?", default="main", help="Target agent")
+    test_parser.add_argument("target", nargs="?", default="dev-general", help="Target agent")
     
     # TUI command (placeholder)
     subparsers.add_parser("tui", help="Launch TUI dashboard (coming soon)")

@@ -77,7 +77,7 @@ class Runner:
         }
     
     def run(self, name: str, prompt: str, model="haiku", budget=2.0, 
-           notify_target="main", background=True) -> bool:
+           notify_target="dev-general", background=True) -> bool:
         """Run claude code in background with monitoring"""
         
         if name in self.workers:

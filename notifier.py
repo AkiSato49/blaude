@@ -13,7 +13,7 @@ class Notifier:
         pass
     
     def notify_completion(self, worker_name: str, summary: str, duration: int, 
-                         target: str = "main") -> bool:
+                         target: str = "dev-general") -> bool:
         """
         Notify completion via openclaw agent message
         
@@ -42,12 +42,12 @@ class Notifier:
         
         return self._send_openclaw_message(target, message)
     
-    def notify_error(self, worker_name: str, error: str, target: str = "main") -> bool:
+    def notify_error(self, worker_name: str, error: str, target: str = "dev-general") -> bool:
         """Notify about worker errors"""
         message = f"❌ Worker **{worker_name}** failed:\n```\n{error}\n```"
         return self._send_openclaw_message(target, message)
     
-    def notify_killed(self, worker_name: str, target: str = "main") -> bool:
+    def notify_killed(self, worker_name: str, target: str = "dev-general") -> bool:
         """Notify about manually killed workers"""
         message = f"🛑 Worker **{worker_name}** was manually terminated"
         return self._send_openclaw_message(target, message)
@@ -98,7 +98,7 @@ class Notifier:
             print(f"❌ Error sending notification to {target}: {e}")
             return False
     
-    def test_notification(self, target: str = "main") -> bool:
+    def test_notification(self, target: str = "dev-general") -> bool:
         """Send a test notification to verify the system works"""
         test_message = "🧪 Blaude notification test - system is working!"
         print(f"Sending test notification to {target}...")
