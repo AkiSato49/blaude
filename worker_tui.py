@@ -5,6 +5,7 @@ Blaude Worker TUI - Lazygit-style dashboard for monitoring Claude workers
 import asyncio
 import json
 import time
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -54,8 +55,16 @@ class WorkerBox(Static):
             name = worker_data["name"]
             status = worker_data["status"]
             model = worker_data.get("model", "unknown")
-            age = int(time.time() - worker_data.get("start_time", time.time()))
-            budget = worker_data.get("budget", 0)
+            
+            # Calculate proper duration
+            start_time = worker_data.get("start_time", time.time())
+            if status in ["completed", "killed", "dead"]:
+                end_time = worker_data.get("end_time", time.time())
+                age = int(end_time - start_time)
+            else:
+                age = int(time.time() - start_time)
+            
+            budget = worker_data.get("budget", 0.0)
             
             # Status icon
             status_icons = {
@@ -102,38 +111,48 @@ class WorkerBox(Static):
         try:
             log_file = worker_data.get("log_file", "")
             if not log_file or not Path(log_file).exists():
-                return "No log file available"
+                return f"No log: {log_file}"
             
             with open(log_file, 'r') as f:
                 content = f.read()
             
-            # Extract meaningful lines (skip debug timestamps)
+            if not content.strip():
+                return "Empty log file"
+            
+            # Look for JSON result first
+            import re
+            json_matches = re.findall(r'{"type":"result".*?}', content)
+            if json_matches:
+                try:
+                    result_data = json.loads(json_matches[-1])
+                    if 'result' in result_data:
+                        result_text = result_data['result']
+                        # Take first few lines for display
+                        lines = result_text.split('\n')[:6]
+                        return '\n'.join(lines)
+                except:
+                    pass
+            
+            # Fallback: extract meaningful non-debug lines
             lines = content.split('\n')
             meaningful_lines = []
             
-            for line in lines[-30:]:  # Last 30 lines
-                if line.strip() and not line.startswith("2026-"):
-                    # Try to extract reasoning from JSON results
-                    if '"result":' in line:
-                        try:
-                            import json as json_module
-                            data = json_module.loads(line)
-                            if 'result' in data:
-                                meaningful_lines.extend(data['result'].split('\n')[:5])
-                        except:
-                            continue
-                    else:
-                        meaningful_lines.append(line.strip())
+            for line in lines[-50:]:  # Last 50 lines
+                if (line.strip() and 
+                    not line.startswith("2026-") and 
+                    not "DEBUG" in line and
+                    len(line.strip()) > 10):
+                    meaningful_lines.append(line.strip())
             
-            # Take last 8 lines for the box
-            display_lines = meaningful_lines[-8:]
-            if not display_lines:
-                return "Worker starting..."
-            
-            return '\n'.join(display_lines)
+            if meaningful_lines:
+                # Take last 6 lines for the box
+                display_lines = meaningful_lines[-6:]
+                return '\n'.join(display_lines)
+            else:
+                return f"Debug only ({len(content)} chars)"
             
         except Exception as e:
-            return f"Error reading log: {e}"
+            return f"Error: {e}"
     
     def get_empty_slot_content(self) -> str:
         """Content for empty worker slots"""
@@ -193,6 +212,8 @@ class BlaudeTUI(App):
         ("c", "cleanup", "Cleanup"),
         ("n", "new_worker", "New Worker"),
         ("k", "kill_worker", "Kill Worker"),
+        ("v", "view_worker", "View Worker"),
+        ("x", "remove_worker", "Remove"),
         ("t", "templates", "Templates"),
     ]
     
@@ -228,8 +249,20 @@ class BlaudeTUI(App):
     def refresh_workers(self) -> None:
         """Refresh worker data and update display"""
         try:
-            # Get current workers
-            workers_list = self.runner.list_workers()
+            # Get current workers directly from JSON file
+            workers_file = Path("/tmp/blaude-workers.json")
+            if workers_file.exists():
+                with open(workers_file, 'r') as f:
+                    all_workers = json.load(f)
+                
+                # Convert to list format for display
+                workers_list = []
+                for name, data in all_workers.items():
+                    worker_info = data.copy()
+                    worker_info["name"] = name
+                    workers_list.append(worker_info)
+            else:
+                workers_list = []
             
             # Update each box
             for i in range(8):
@@ -287,7 +320,7 @@ class BlaudeTUI(App):
         self.notify("Worker templates - TODO")
     
     def on_key(self, event) -> None:
-        """Handle navigation keys"""
+        """Handle navigation keys and actions"""
         if event.key == "h" and self.selected_worker > 0:
             self.selected_worker = (self.selected_worker - 1) % 8
         elif event.key == "l" and self.selected_worker < 7:
@@ -296,6 +329,55 @@ class BlaudeTUI(App):
             self.selected_worker = self.selected_worker + 4
         elif event.key == "k" and self.selected_worker >= 4:
             self.selected_worker = self.selected_worker - 4
+        elif event.key == "v":
+            self.action_view_worker()
+        elif event.key == "x":
+            self.action_remove_worker()
+    
+    def action_view_worker(self) -> None:
+        """View selected worker's full output"""
+        try:
+            # Get worker data
+            workers_file = Path("/tmp/blaude-workers.json")
+            if workers_file.exists():
+                with open(workers_file, 'r') as f:
+                    all_workers = json.load(f)
+                
+                workers_list = list(all_workers.items())
+                if self.selected_worker < len(workers_list):
+                    worker_name, worker_data = workers_list[self.selected_worker]
+                    
+                    # Show worker details
+                    log_file = worker_data.get("log_file", "")
+                    if Path(log_file).exists():
+                        self.notify(f"Viewing {worker_name} - check log: {log_file}")
+                    else:
+                        self.notify(f"No log file for {worker_name}")
+                else:
+                    self.notify("No worker selected")
+        except Exception as e:
+            self.notify(f"View error: {e}", severity="error")
+    
+    def action_remove_worker(self) -> None:
+        """Remove selected worker from tracking"""
+        try:
+            workers_file = Path("/tmp/blaude-workers.json")
+            if workers_file.exists():
+                with open(workers_file, 'r') as f:
+                    all_workers = json.load(f)
+                
+                workers_list = list(all_workers.keys())
+                if self.selected_worker < len(workers_list):
+                    worker_name = workers_list[self.selected_worker]
+                    del all_workers[worker_name]
+                    
+                    with open(workers_file, 'w') as f:
+                        json.dump(all_workers, f, indent=2)
+                    
+                    self.notify(f"Removed {worker_name}")
+                    self.refresh_workers()
+        except Exception as e:
+            self.notify(f"Remove error: {e}", severity="error")
 
 def main():
     """Launch the Blaude TUI"""
