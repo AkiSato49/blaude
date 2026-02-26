@@ -158,8 +158,15 @@ Examples:
         sys.exit(0 if success else 1)
     
     elif args.command == "tui":
-        print("🚧 TUI dashboard coming soon! Use 'blaude list' for now.")
-        sys.exit(1)
+        try:
+            # Launch the TUI using the correct Python version
+            import subprocess
+            script_dir = Path(__file__).parent
+            launch_script = script_dir / "launch_tui.sh"
+            subprocess.run([str(launch_script)], check=True)
+        except Exception as e:
+            print(f"❌ Error launching TUI: {e}")
+            sys.exit(1)
     
     else:
         print(f"Unknown command: {args.command}")
