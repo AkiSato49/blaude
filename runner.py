@@ -84,8 +84,12 @@ class Runner:
             print(f"❌ Worker '{name}' already exists")
             return False
         
-        if not self.set_env_wizard():
+        # Check authentication more thoroughly
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        if not api_key:
+            print("❌ ANTHROPIC_API_KEY not found in environment")
             return False
+        print(f"✅ Found API key: {api_key[:10]}...")
         
         config = self.get_config(name, prompt)
         session_id = config["session_id"]
@@ -106,17 +110,24 @@ class Runner:
             if background:
                 # Use nohup for true background execution
                 cmd = ["nohup"] + cmd
+                # Ensure environment variables are passed
+                env = os.environ.copy()
+                env.update(config.get("env", {}))
+                
                 proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     preexec_fn=os.setsid,  # Create new process group
-                    cwd=str(Path.cwd())
+                    cwd=str(Path.cwd()),
+                    env=env  # Pass environment variables
                 )
                 pid = proc.pid
             else:
                 # Run in foreground for testing
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                env = os.environ.copy()
+                env.update(config.get("env", {}))
+                result = subprocess.run(cmd, capture_output=True, text=True, env=env)
                 pid = None
                 if result.returncode != 0:
                     print(f"❌ Command failed: {result.stderr}")
